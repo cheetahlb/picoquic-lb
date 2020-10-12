@@ -41,6 +41,8 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include <picoquic.h>
 #include <picosocks.h>
 #include <picoquic_utils.h>
@@ -68,6 +70,8 @@
  * for each of the call back events.
  */
 
+#define CRC16 0x8005
+
 typedef struct st_sample_server_stream_ctx_t {
     struct st_sample_server_stream_ctx_t* next_stream;
     struct st_sample_server_stream_ctx_t* previous_stream;
@@ -88,6 +92,60 @@ typedef struct st_sample_server_ctx_t {
     sample_server_stream_ctx_t* first_stream;
     sample_server_stream_ctx_t* last_stream;
 } sample_server_ctx_t;
+
+
+
+uint16_t gen_crc16(const uint8_t *data, uint16_t size)
+{
+    uint16_t out = 0;
+    int bits_read = 0, bit_flag;
+
+    /* Sanity check: */
+    if(data == NULL)
+        return 0;
+
+    while(size > 0)
+    {
+        bit_flag = out >> 15;
+
+        /* Get next bit: */
+        out <<= 1;
+        out |= (*data >> bits_read) & 1; // item a) work from the least significant bits
+
+        /* Increment bit counter: */
+        bits_read++;
+        if(bits_read > 7)
+        {
+            bits_read = 0;
+            data++;
+            size--;
+        }
+
+        /* Cycle check: */
+        if(bit_flag)
+            out ^= CRC16;
+
+    }
+
+    // item b) "push out" the last 16 bits
+    int i;
+    for (i = 0; i < 16; ++i) {
+        bit_flag = out >> 15;
+        out <<= 1;
+        if(bit_flag)
+            out ^= CRC16;
+    }
+
+    // item c) reverse the bits
+    uint16_t crc = 0;
+    i = 0x8000;
+    int j = 0x0001;
+    for (; i != 0; i >>=1, j <<= 1) {
+        if (i & out) crc |= j;
+    }
+
+    return crc;
+}
 
 sample_server_stream_ctx_t * sample_server_create_stream_context(sample_server_ctx_t* server_ctx, uint64_t stream_id)
 {
@@ -360,6 +418,41 @@ int sample_server_callback(picoquic_cnx_t* cnx,
     return ret;
 }
 
+/*
+uint8_t get_random_first_byte() {
+    srand((int)time(0));
+    uint8_t rand_byte = rand() % 256;
+    //uint8_t *first_byte = rand_byte;
+    return rand_byte;
+}
+
+uint16_t get_server_cookie(uint8_t *first_byte, uint64_t server_id) {
+    uint16_t crc16_hash = gen_crc16(first_byte, 1);
+    uint16_t cookie = server_id ^ crc16_hash;
+    return cookie;
+}
+*/
+
+picoquic_load_balancer_config_t get_server_lb_config (uint16_t server_id){
+    srand((int)time(0));
+    uint8_t rand_byte = rand() % 256;
+    uint8_t *first_byte = &rand_byte;
+
+    picoquic_load_balancer_config_t config_s = {
+        picoquic_load_balancer_cid_clear,
+        2,
+        2,
+        0,
+        0,
+        8,
+        *first_byte,
+        server_id,
+        { 0 },
+        0
+    };
+    return config_s;
+}
+
 /* Server loop setup:
  * - Create the QUIC context.
  * - Open the sockets
@@ -372,7 +465,11 @@ int sample_server_callback(picoquic_cnx_t* cnx,
  * - The loop breaks if the socket return an error. 
  */
 
+<<<<<<< ours
 int picoquic_sample_server(int server_port, const char* server_cert, const char* server_key, const char* default_dir)
+=======
+int picoquic_sample_server(int server_port, const char* server_cert, const char* server_key, const char * default_dir, const char* server_id_char)
+>>>>>>> theirs
 {
     /* Start: start the QUIC process with cert and key files */
     int ret = 0;
@@ -384,6 +481,7 @@ int picoquic_sample_server(int server_port, const char* server_cert, const char*
     default_context.default_dir = default_dir;
     default_context.default_dir_len = strlen(default_dir);
 
+<<<<<<< ours
     printf("Starting Picoquic Sample server on port %d\n", server_port);
 
     /* Create the QUIC context for the server */
@@ -391,6 +489,33 @@ int picoquic_sample_server(int server_port, const char* server_cert, const char*
     /* Create QUIC context */
     quic = picoquic_create(8, server_cert, server_key, NULL, PICOQUIC_SAMPLE_ALPN,
         sample_server_callback, &default_context, NULL, NULL, NULL, current_time, NULL, NULL, NULL, 0);
+=======
+    uint16_t server_id = atoi(server_id_char);
+    picoquic_load_balancer_config_t config_s = get_server_lb_config(server_id);
+    picoquic_load_balancer_config_t *config = &config_s;
+
+    /* Open a UDP socket */
+    ret = picoquic_open_server_sockets(&server_sockets, server_port);
+    if (ret != 0) {
+        fprintf(stderr, "Could not open sockets on port %d\n", server_port);
+    }
+    else {
+
+        /* Create the QUIC context for the server */
+        current_time = picoquic_current_time();
+        /* Create QUIC context */
+        quic = picoquic_create(8, server_cert, server_key, NULL, PICOQUIC_SAMPLE_ALPN,
+            sample_server_callback, &default_context, NULL, NULL, NULL, current_time, NULL, NULL, NULL, 0);
+
+        if (quic == NULL) {
+            fprintf(stderr, "Could not create server context\n");
+            ret = -1;
+        }
+        else {
+            ret = picoquic_lb_compat_cid_config(quic, config);
+
+            picoquic_set_cookie_mode(quic, 2);
+>>>>>>> theirs
 
     if (quic == NULL) {
         fprintf(stderr, "Could not create server context\n");
@@ -409,8 +534,60 @@ int picoquic_sample_server(int server_port, const char* server_cert, const char*
     }
 
     /* Wait for packets */
+<<<<<<< ours
     if (ret == 0) {
         ret = picoquic_packet_loop(quic, server_port, 0, 0, NULL, NULL);
+=======
+    while (ret == 0) {
+        int loop_count = 0;
+        unsigned char received_ecn;
+        int64_t delta_t = picoquic_get_next_wake_delay(quic, current_time, delay_max);
+
+        if_index_to = 0;
+
+        bytes_recv = picoquic_select(server_sockets.s_socket, PICOQUIC_NB_SERVER_SOCKETS,
+            &addr_from, &addr_to, &if_index_to, &received_ecn,
+            recv_buffer, sizeof(recv_buffer),
+            delta_t, &current_time);
+
+        if (bytes_recv < 0) {
+            ret = -1;
+        }
+
+        else{
+            if (bytes_recv > 0) {
+                /* Submit the packet to the server */
+                (void)picoquic_incoming_packet(quic, recv_buffer,
+                    (size_t)bytes_recv, (struct sockaddr*) & addr_from,
+                    (struct sockaddr*) & addr_to, if_index_to, received_ecn,
+                    current_time);
+            }
+
+            do {
+                struct sockaddr_storage peer_addr;
+                struct sockaddr_storage local_addr;
+                int if_index = 0;
+                int sock_ret = 0;
+                int sock_err = 0;
+
+                loop_count++;
+
+                ret = picoquic_prepare_next_packet(quic, current_time,
+                    send_buffer, sizeof(send_buffer), &send_length,
+                    &peer_addr, &local_addr, &if_index, &log_cid, NULL);
+
+                if (ret == 0 && send_length > 0) {
+                    sock_ret = picoquic_send_through_server_sockets(&server_sockets,
+                        (struct sockaddr*) & peer_addr, (struct sockaddr*) & local_addr, if_index,
+                        (const char*)send_buffer, (int)send_length, &sock_err);
+                    if (sock_ret <= 0) {
+                        picoquic_log_context_free_app_message(quic, &log_cid, "Could not send message to AF_to=%d, AF_from=%d, ret=%d, err=%d",
+                            peer_addr.ss_family, local_addr.ss_family, sock_ret, sock_err);
+                    }
+                }
+            } while (ret == 0 && send_length > 0 && loop_count < 10);
+        }
+>>>>>>> theirs
     }
 
     /* And finish. */

@@ -2221,6 +2221,57 @@ picoquic_local_cnxid_t* picoquic_find_local_cnxid(picoquic_cnx_t* cnx, picoquic_
 
 /* Connection management
  */
+uint16_t calculate_crc16(const uint8_t *data, uint16_t size)
+{
+    uint16_t out = 0;
+    int bits_read = 0, bit_flag;
+
+    /* Sanity check: */
+    if(data == NULL)
+        return 0;
+
+    while(size > 0)
+    {
+        bit_flag = out >> 15;
+
+        /* Get next bit: */
+        out <<= 1;
+        out |= (*data >> bits_read) & 1; // item a) work from the least significant bits
+
+        /* Increment bit counter: */
+        bits_read++;
+        if(bits_read > 7)
+        {
+            bits_read = 0;
+            data++;
+            size--;
+        }
+
+        /* Cycle check: */
+        if(bit_flag)
+            out ^= 0x8005;
+
+    }
+
+    // item b) "push out" the last 16 bits
+    int i;
+    for (i = 0; i < 16; ++i) {
+        bit_flag = out >> 15;
+        out <<= 1;
+        if(bit_flag)
+            out ^= 0x8005;
+    }
+
+    // item c) reverse the bits
+    uint16_t crc = 0;
+    i = 0x8000;
+    int j = 0x0001;
+    for (; i != 0; i >>=1, j <<= 1) {
+        if (i & out) crc |= j;
+    }
+
+    return crc;
+}
 
 picoquic_cnx_t* picoquic_create_cnx(picoquic_quic_t* quic,
     picoquic_connection_id_t initial_cnx_id, picoquic_connection_id_t remote_cnx_id, 
@@ -2245,7 +2296,16 @@ picoquic_cnx_t* picoquic_create_cnx(picoquic_quic_t* quic,
         cnx->quic = quic;
         /* Create the connection ID number 0 */
         cnxid0 = picoquic_create_local_cnxid(cnx, NULL);
-        
+        if(!cnx->client_mode) {
+            picoquic_connection_id_t cnx_id_lb = cnxid0->cnx_id;
+            unsigned char *addr = (unsigned char *)addr_to->sa_data;
+            uint16_t hash = calculate_crc16(addr, 6);
+            uint8_t hash8[2] = {(uint8_t)(hash >> 8), (uint8_t)hash};
+            cnx_id_lb.id[1] ^= hash8[0];
+            cnx_id_lb.id[2] ^= hash8[1];
+            cnxid0 = picoquic_create_local_cnxid(cnx, &cnx_id_lb);
+            printf("%x\n", hash);
+        }
         /* Should return 0, since this is the first path */
         ret = picoquic_create_path(cnx, start_time, NULL, addr_to);
 
