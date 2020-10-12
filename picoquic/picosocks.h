@@ -215,6 +215,14 @@ int picoquic_get_server_address(const char* ip_address_text, int server_port,
     struct sockaddr_storage* server_address,
     int* is_name);
 
+int picoquic_recvmsg(SOCKET_TYPE fd,
+    struct sockaddr_storage* addr_from,
+    struct sockaddr_storage* addr_dest,
+    int* dest_if,
+    unsigned char* received_ecn,
+    uint8_t* buffer, int buffer_max);
+
+
 /* Wireshark needs the session keys in order to decrypt and analyze packets.
  * In Unix and Windows, Wireshark reads these keys from a file. The name
  * of the file is passed in the environment variable SSLKEYLOGFILE,

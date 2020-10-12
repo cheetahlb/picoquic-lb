@@ -2539,14 +2539,10 @@ int http_corrupt_test()
 
 int http_drop_test()
 {
-<<<<<<< ours
     return http_stress_test_one(0, 1, 0);
 }
 
 int http_corrupt_rdpn_test()
 {
     return http_stress_test_one(1, 0, 1);
-=======
-    return http_stress_test_one(0, 1);
->>>>>>> theirs
 }

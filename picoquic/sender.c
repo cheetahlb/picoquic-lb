@@ -3915,7 +3915,6 @@ int picoquic_prepare_next_packet_ex(picoquic_quic_t* quic,
 
     return ret;
 }
-<<<<<<< ours
 
 int picoquic_prepare_next_packet(picoquic_quic_t* quic,
     uint64_t current_time, uint8_t* send_buffer, size_t send_buffer_max, size_t* send_length,
@@ -3924,5 +3923,4 @@ int picoquic_prepare_next_packet(picoquic_quic_t* quic,
 {
     return picoquic_prepare_next_packet_ex(quic, current_time, send_buffer, send_buffer_max, send_length,
         p_addr_to, p_addr_from, if_index, log_cid, p_last_cnx, NULL);
-}=======
->>>>>>> theirs
+}
