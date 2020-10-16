@@ -440,26 +440,6 @@ uint16_t get_server_cookie(uint8_t *first_byte, uint64_t server_id) {
 }
 */
 
-picoquic_load_balancer_config_t get_server_lb_config (uint16_t server_id){
-    srand((int)time(0));
-    uint8_t rand_byte = rand() % 256;
-    uint8_t *first_byte = &rand_byte;
-
-    picoquic_load_balancer_config_t config_s = {
-        picoquic_load_balancer_cid_clear,
-        2,
-        2,
-        0,
-        0,
-        8,
-        *first_byte,
-        server_id,
-        { 0 },
-        0
-    };
-    return config_s;
-}
-
 /* Server loop setup:
  * - Create the QUIC context.
  * - Open the sockets
@@ -471,6 +451,10 @@ picoquic_load_balancer_config_t get_server_lb_config (uint16_t server_id){
  *       if there is, send it.
  * - The loop breaks if the socket return an error. 
  */
+
+picoquic_load_balancer_cid_cheetah_t lb_cheetah = {
+    .first_byte = 3
+};
 
 int picoquic_sample_server(int server_port, const char* server_cert, const char* server_key, const char * default_dir, const char* server_id_char)
 {
@@ -486,7 +470,7 @@ int picoquic_sample_server(int server_port, const char* server_cert, const char*
 
     printf("Starting Picoquic Sample server on port %d\n", server_port);
 
-    /* Create the QUIC context for the server */
+   /* Create the QUIC context for the server */
     current_time = picoquic_current_time();
     /* Create QUIC context */
     quic = picoquic_create(8, server_cert, server_key, NULL, PICOQUIC_SAMPLE_ALPN,
@@ -498,6 +482,13 @@ int picoquic_sample_server(int server_port, const char* server_cert, const char*
         ret = -1;
     }
     else {
+
+        picoquic_set_default_connection_id_length(quic, 8);
+        if (server_id_char) {
+            lb_cheetah.server_id = atoi(server_id_char);
+            picoquic_set_cnx_id_callback(quic, picoquic_lb_compat_cid_cheetah, &lb_cheetah);
+        }
+
         picoquic_set_cookie_mode(quic, 2);
 
         picoquic_set_default_congestion_algorithm(quic, picoquic_bbr_algorithm);

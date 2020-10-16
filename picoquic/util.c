@@ -310,17 +310,6 @@ int picoquic_is_connection_id_null(const picoquic_connection_id_t * cnx_id)
     return (cnx_id->id_len == 0) ? 1 : 0;
 }
 
-int picoquic_compare_connection_id(const picoquic_connection_id_t * cnx_id1, const picoquic_connection_id_t * cnx_id2)
-{
-    int ret = -1;
-
-    if (cnx_id1->id_len == cnx_id2->id_len) {
-        ret = memcmp(cnx_id1->id, cnx_id2->id, cnx_id1->id_len);
-    }
-
-    return ret;
-}
-
 /* Hash connection ids for picohash_table's */
 uint64_t picoquic_connection_id_hash(const picoquic_connection_id_t * cid)
 {

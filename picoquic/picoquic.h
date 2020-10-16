@@ -309,7 +309,7 @@ int picoquic_add_proposed_alpn(void* tls_context, const char* alpn);
  */
 
 typedef void (*picoquic_connection_id_cb_fn)(picoquic_quic_t * quic, picoquic_connection_id_t cnx_id_local,
-    picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t * cnx_id_returned);
+    picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t * cnx_id_returned, struct sockaddr* addr_to);
 
 /* Default connection ID management functions, supporting a set of basic
  * callback policies:
@@ -331,7 +331,7 @@ typedef struct st_picoquic_connection_id_callback_ctx_t {
 } picoquic_connection_id_callback_ctx_t;
 
 void picoquic_connection_id_callback(picoquic_quic_t * quic, picoquic_connection_id_t cnx_id_local,
-    picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t * cnx_id_returned);
+    picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t * cnx_id_returned, struct sockaddr* addr_to);
 
 picoquic_connection_id_callback_ctx_t * picoquic_connection_id_callback_create_ctx(
     char const * select_type, char const * default_value_hex, char const * mask_hex);
@@ -574,9 +574,14 @@ picoquic_cnx_t* picoquic_get_next_cnx(picoquic_cnx_t* cnx);
 int64_t picoquic_get_next_wake_delay(picoquic_quic_t* quic,
     uint64_t current_time,
     int64_t delay_max);
+int64_t picoquic_get_wake_delay(picoquic_cnx_t* cnx,
+    uint64_t current_time,
+    int64_t delay_max);
 picoquic_cnx_t* picoquic_get_earliest_cnx_to_wake(picoquic_quic_t* quic, uint64_t max_wake_time);
 
 uint64_t picoquic_get_next_wake_time(picoquic_quic_t* quic, uint64_t current_time);
+
+uint64_t picoquic_get_wake_time(picoquic_cnx_t* cnx, uint64_t current_time);
 
 picoquic_state_enum picoquic_get_cnx_state(picoquic_cnx_t* cnx);
 
@@ -917,6 +922,7 @@ uint64_t picoquic_get_rtt(picoquic_cnx_t* cnx);
 
 typedef enum {
     picoquic_load_balancer_cid_clear,
+    picoquic_load_balancer_cid_cheetah,
     picoquic_load_balancer_cid_obfuscated,
     picoquic_load_balancer_cid_stream_cipher,
     picoquic_load_balancer_cid_block_cipher
@@ -939,6 +945,7 @@ typedef struct st_picoquic_load_balancer_config_t {
 int picoquic_lb_compat_cid_config(picoquic_quic_t* quic, picoquic_load_balancer_config_t* lb_config);
 void picoquic_lb_compat_cid_config_free(picoquic_quic_t* quic);
 
+
 typedef struct st_picoquic_load_balancer_cid_context_t {
     picoquic_load_balancer_cid_method_enum method;
     uint8_t server_id_length;
@@ -954,8 +961,17 @@ typedef struct st_picoquic_load_balancer_cid_context_t {
     void* cid_decryption_context; /* used in block cipher mode */
 } picoquic_load_balancer_cid_context_t;
 
-void picoquic_lb_compat_cid_generate(picoquic_quic_t* quic, picoquic_connection_id_t cnx_id_local, picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t* cnx_id_returned);
+
+typedef struct st_picoquic_load_balancer_cid_cheetah_t {
+    uint8_t first_byte;
+    uint16_t server_id;
+} picoquic_load_balancer_cid_cheetah_t;
+
+void picoquic_lb_compat_cid_cheetah(picoquic_quic_t* quic, picoquic_connection_id_t cnx_id_local, picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t* cnx_id_returned, struct sockaddr *addr_to);
+void picoquic_lb_compat_cid_generate(picoquic_quic_t* quic, picoquic_connection_id_t cnx_id_local, picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t* cnx_id_returned, struct sockaddr *addr_to);
 uint64_t picoquic_lb_compat_cid_verify(picoquic_quic_t* quic, void* cnx_id_cb_data, picoquic_connection_id_t const* cnx_id);
+
+void picoquic_set_cnx_id_callback(picoquic_quic_t* quic, picoquic_connection_id_cb_fn fn, void* ctx);
 #ifdef __cplusplus
 }
 #endif

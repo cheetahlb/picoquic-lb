@@ -2666,7 +2666,10 @@ uint8_t * picoquic_format_new_local_id_as_needed(picoquic_cnx_t* cnx, uint8_t* b
         cnx->nb_local_cnxid < (int)(cnx->remote_parameters.active_connection_id_limit) &&
         cnx->nb_local_cnxid <= PICOQUIC_NB_PATH_TARGET) {
         uint8_t* bytes0 = bytes;
-        picoquic_local_cnxid_t* l_cid = picoquic_create_local_cnxid(cnx, NULL);
+        struct sockaddr_storage addr_s;
+        struct sockaddr* addr = (struct sockaddr*)&addr_s;;
+        picoquic_get_peer_addr(cnx, &addr);
+        picoquic_local_cnxid_t* l_cid = picoquic_create_local_cnxid(cnx, NULL, addr);
 
         if (l_cid == NULL) {
             /* OOPS, memory error */

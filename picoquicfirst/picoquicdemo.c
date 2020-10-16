@@ -139,6 +139,11 @@ static int server_loop_cb(picoquic_quic_t* quic, picoquic_packet_loop_cb_enum cb
     return ret;
 }
 
+picoquic_load_balancer_cid_cheetah_t lb_cheetah = {
+        .first_byte = 3
+};
+
+
 int quic_server(const char* server_name, int server_port,
     const char* pem_cert, const char* pem_key,
     int just_once, int do_retry, picoquic_connection_id_cb_fn cnx_id_callback,
@@ -147,7 +152,7 @@ int quic_server(const char* server_name, int server_port,
     const char* esni_key_file_name, const char* esni_rr_file_name,
     char const* log_file, char const* bin_dir, char const* qlog_dir, int use_long_log,
     picoquic_congestion_algorithm_t const* cc_algorithm, char const* web_folder,
-    int initial_random)
+    int initial_random, const char* server_id_char)
 {
     /* Start: start the QUIC process with cert and key files */
     int ret = 0;
@@ -174,6 +179,13 @@ int quic_server(const char* server_name, int server_port,
             ret = -1;
         }
         else {
+
+        picoquic_set_default_connection_id_length(qserver, 8);
+        if (server_id_char) {
+            lb_cheetah.server_id = atoi(server_id_char);
+            picoquic_set_cnx_id_callback(qserver, picoquic_lb_compat_cid_cheetah, &lb_cheetah);
+        }
+
             picoquic_set_alpn_select_fn(qserver, picoquic_demo_server_callback_select_alpn);
             if (do_retry != 0) {
                 picoquic_set_cookie_mode(qserver, 1);
@@ -836,6 +848,7 @@ void usage()
     fprintf(stderr, "                           -1: receiving interface\n");
     fprintf(stderr, "                            0: routing lookup\n");
     fprintf(stderr, "                            n: ifindex\n");
+    fprintf(stderr, "  -d server_id          ID of the server (for cheetah load balancing)\n");
     fprintf(stderr, "  -f migration_mode     Force client to migrate to start migration:\n");
     fprintf(stderr, "                        -f 1  test NAT rebinding,\n");
     fprintf(stderr, "                        -f 2  test CNXID renewal,\n");
@@ -904,6 +917,7 @@ int main(int argc, char** argv)
 {
     const char * solution_dir = NULL;
     const char * server_name = default_server_name;
+    const char * server_id = NULL;
     const char * server_cert_file = NULL;
     const char * server_key_file = NULL;
     const char * esni_key_file = NULL;
@@ -948,7 +962,7 @@ int main(int argc, char** argv)
 
     /* Get the parameters */
     int opt;
-    while ((opt = getopt(argc, argv, "c:k:K:p:u:v:o:w:f:i:s:e:E:C:l:b:q:m:n:a:t:S:I:G:1rRhzDLQ")) != -1) {
+    while ((opt = getopt(argc, argv, "c:k:K:p:u:v:o:w:f:i:s:d:e:E:C:l:b:q:m:n:a:t:S:I:G:1rRhzDLQ")) != -1) {
         switch (opt) {
         case 'c':
             server_cert_file = optarg;
@@ -1051,6 +1065,9 @@ int main(int argc, char** argv)
                 usage();
             }
             break;
+        case 'd':
+            server_id = optarg;
+            break;
         case 'n':
             sni = optarg;
             break;
@@ -1134,7 +1151,7 @@ int main(int argc, char** argv)
             (cnx_id_cbdata == NULL) ? NULL : (void*)cnx_id_cbdata,
             (uint8_t*)reset_seed, dest_if, mtu_max, proposed_version,
             esni_key_file, esni_rr_file,
-            log_file, bin_dir, qlog_dir, use_long_log, cc_algorithm, www_dir, initial_random);
+            log_file, bin_dir, qlog_dir, use_long_log, cc_algorithm, www_dir, initial_random, server_id);
         printf("Server exit with code = %d\n", ret);
     } else {
         /* Run as client */

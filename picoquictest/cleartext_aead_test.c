@@ -1393,7 +1393,7 @@ int cid_for_lb_test_one(picoquic_quic_t* quic, int test_id, picoquic_load_balanc
 
         if (quic->cnx_id_callback_fn) {
             quic->cnx_id_callback_fn(quic, picoquic_null_connection_id, picoquic_null_connection_id,
-                quic->cnx_id_callback_ctx, &result);
+                quic->cnx_id_callback_ctx, &result, NULL);
         }
 
         if (picoquic_compare_connection_id(&result, target_cid) != 0) {

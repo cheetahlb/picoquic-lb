@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include "picoquic.h"
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,7 +84,7 @@ extern const picoquic_connection_id_t picoquic_null_connection_id;
 uint8_t picoquic_format_connection_id(uint8_t* bytes, size_t bytes_max, picoquic_connection_id_t cnx_id);
 uint8_t picoquic_parse_connection_id(const uint8_t* bytes, uint8_t len, picoquic_connection_id_t *cnx_id);
 int picoquic_is_connection_id_null(const picoquic_connection_id_t * cnx_id);
-int picoquic_compare_connection_id(const picoquic_connection_id_t * cnx_id1, const picoquic_connection_id_t * cnx_id2);
+inline int picoquic_compare_connection_id(const picoquic_connection_id_t * cnx_id1, const picoquic_connection_id_t * cnx_id2);
 uint64_t picoquic_connection_id_hash(const picoquic_connection_id_t * cid);
 uint64_t picoquic_val64_connection_id(picoquic_connection_id_t cnx_id);
 void picoquic_set64_connection_id(picoquic_connection_id_t * cnx_id, uint64_t val64);
@@ -307,4 +308,17 @@ extern char const* picoquic_solution_dir;
 #ifdef __cplusplus
 }
 #endif
+
+inline int picoquic_compare_connection_id(const picoquic_connection_id_t * cnx_id1, const picoquic_connection_id_t * cnx_id2)
+{
+    int ret = -1;
+
+    if (cnx_id1->id_len == cnx_id2->id_len) {
+        ret = memcmp(cnx_id1->id, cnx_id2->id, cnx_id1->id_len);
+    }
+
+    return ret;
+}
+
+
 #endif

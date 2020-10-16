@@ -1009,10 +1009,36 @@ uint64_t picoquic_get_next_wake_time(picoquic_quic_t* quic, uint64_t current_tim
     return wake_time;
 }
 
+uint64_t picoquic_get_wake_time(picoquic_cnx_t* cnx, uint64_t current_time)
+{
+    uint64_t wake_time = UINT64_MAX;
+
+    if (cnx->quic->pending_stateless_packet != NULL) {
+        wake_time = current_time;
+    } else {
+        wake_time = cnx->next_wake_time;
+    }
+
+    return wake_time;
+}
+
 int64_t picoquic_get_next_wake_delay(picoquic_quic_t* quic,
     uint64_t current_time, int64_t delay_max)
 {
     uint64_t next_wake_time = picoquic_get_next_wake_time(quic, current_time);
+    int64_t wake_delay = next_wake_time - current_time;
+
+    if (wake_delay > delay_max || next_wake_time == UINT64_MAX) {
+        wake_delay = delay_max;
+    }
+
+    return wake_delay;
+}
+
+int64_t picoquic_get_wake_delay(picoquic_cnx_t* cnx,
+    uint64_t current_time, int64_t delay_max)
+{
+    uint64_t next_wake_time = picoquic_get_wake_time(cnx, current_time);
     int64_t wake_delay = next_wake_time - current_time;
 
     if (wake_delay > delay_max || next_wake_time == UINT64_MAX) {
@@ -2070,7 +2096,7 @@ int picoquic_mark_direct_receive_stream(picoquic_cnx_t* cnx, uint64_t stream_id,
  * Local CID are created and registered on demand.
  */
 
-picoquic_local_cnxid_t* picoquic_create_local_cnxid(picoquic_cnx_t* cnx, picoquic_connection_id_t* suggested_value)
+picoquic_local_cnxid_t* picoquic_create_local_cnxid(picoquic_cnx_t* cnx, picoquic_connection_id_t* suggested_value, struct sockaddr* addr_to)
 {
     picoquic_local_cnxid_t* l_cid = NULL;
     int is_unique = 0;
@@ -2092,7 +2118,7 @@ picoquic_local_cnxid_t* picoquic_create_local_cnxid(picoquic_cnx_t* cnx, picoqui
 
                     if (cnx->quic->cnx_id_callback_fn) {
                         cnx->quic->cnx_id_callback_fn(cnx->quic, l_cid->cnx_id, cnx->initial_cnxid,
-                            cnx->quic->cnx_id_callback_ctx, &l_cid->cnx_id);
+                            cnx->quic->cnx_id_callback_ctx, &l_cid->cnx_id, addr_to);
                     }
                 }
 
@@ -2295,17 +2321,8 @@ picoquic_cnx_t* picoquic_create_cnx(picoquic_quic_t* quic,
         cnx->initial_cnxid = initial_cnx_id;
         cnx->quic = quic;
         /* Create the connection ID number 0 */
-        cnxid0 = picoquic_create_local_cnxid(cnx, NULL);
-        if(!cnx->client_mode) {
-            picoquic_connection_id_t cnx_id_lb = cnxid0->cnx_id;
-            unsigned char *addr = (unsigned char *)addr_to->sa_data;
-            uint16_t hash = calculate_crc16(addr, 6);
-            uint8_t hash8[2] = {(uint8_t)(hash >> 8), (uint8_t)hash};
-            cnx_id_lb.id[1] ^= hash8[0];
-            cnx_id_lb.id[2] ^= hash8[1];
-            cnxid0 = picoquic_create_local_cnxid(cnx, &cnx_id_lb);
-            printf("%x\n", hash);
-        }
+        cnxid0 = picoquic_create_local_cnxid(cnx, NULL, addr_to);
+
         /* Should return 0, since this is the first path */
         ret = picoquic_create_path(cnx, start_time, NULL, addr_to);
 
@@ -2337,7 +2354,7 @@ picoquic_cnx_t* picoquic_create_cnx(picoquic_quic_t* quic,
             /* If the default parameters include preferred address, document it */
             if (cnx->local_parameters.prefered_address.is_defined) {
                 /* Create an additional CID */
-                picoquic_local_cnxid_t* cnxid1 = picoquic_create_local_cnxid(cnx, NULL);
+                picoquic_local_cnxid_t* cnxid1 = picoquic_create_local_cnxid(cnx, NULL, addr_to);
                 if (cnxid1 != NULL){
                     /* copy the connection ID into the local parameter */
                     cnx->local_parameters.prefered_address.connection_id = cnxid1->cnx_id;
@@ -2737,7 +2754,7 @@ uint64_t picoquic_get_quic_time(picoquic_quic_t* quic)
     return now;
 }
 
-void picoquic_connection_id_callback(picoquic_quic_t * quic, picoquic_connection_id_t cnx_id_local, picoquic_connection_id_t cnx_id_remote, void * cnx_id_cb_data, picoquic_connection_id_t * cnx_id_returned)
+void picoquic_connection_id_callback(picoquic_quic_t * quic, picoquic_connection_id_t cnx_id_local, picoquic_connection_id_t cnx_id_remote, void * cnx_id_cb_data, picoquic_connection_id_t * cnx_id_returned, struct sockaddr* addr_to)
 {
     picoquic_connection_id_callback_ctx_t* ctx = (picoquic_connection_id_callback_ctx_t*)cnx_id_cb_data;
 
@@ -2821,6 +2838,11 @@ void picoquic_connection_id_callback_free_ctx(void * cnx_id_cb_data)
         ctx->cid_enc = NULL;
     }
     free(cnx_id_cb_data);
+}
+
+void picoquic_set_cnx_id_callback(picoquic_quic_t* quic, picoquic_connection_id_cb_fn fn, void* ctx) {
+    quic->cnx_id_callback_fn = fn;
+    quic->cnx_id_callback_ctx = ctx;
 }
 
 void picoquic_set_fuzz(picoquic_quic_t * quic, picoquic_fuzz_fn fuzz_fn, void * fuzz_ctx)
@@ -3621,12 +3643,13 @@ static void picoquic_lb_compat_cid_generate_block_cipher(picoquic_quic_t* quic,
 }
 
 void picoquic_lb_compat_cid_generate(picoquic_quic_t* quic, picoquic_connection_id_t cnx_id_local,
-    picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t* cnx_id_returned)
+    picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t* cnx_id_returned, struct sockaddr *addr_to)
 {
     picoquic_load_balancer_cid_context_t* lb_ctx = (picoquic_load_balancer_cid_context_t*)cnx_id_cb_data;
 #ifdef _WINDOWS
     UNREFERENCED_PARAMETER(cnx_id_local);
     UNREFERENCED_PARAMETER(cnx_id_remote);
+    UNREFERENCED_PARAMETER(addr_to);
 #endif
     switch (lb_ctx->method) {
     case picoquic_load_balancer_cid_clear:
@@ -3645,6 +3668,17 @@ void picoquic_lb_compat_cid_generate(picoquic_quic_t* quic, picoquic_connection_
         /* Error, unknown method */
         break;
     }
+}
+
+void picoquic_lb_compat_cid_cheetah(picoquic_quic_t* quic, picoquic_connection_id_t cnx_id_local,
+    picoquic_connection_id_t cnx_id_remote, void* cnx_id_cb_data, picoquic_connection_id_t* cnx_id_returned, struct sockaddr *addr_to)
+{
+    //printf("ADDR %p -> %x\n", addr_to, *(unsigned*)(&((struct sockaddr_in*)addr_to)->sin_addr));
+    picoquic_load_balancer_cid_cheetah_t* lb_ctx = (picoquic_load_balancer_cid_cheetah_t*)cnx_id_cb_data;
+    cnx_id_returned->id[0] = lb_ctx->first_byte;
+    unsigned char *addr = (unsigned char *)addr_to->sa_data;
+    uint16_t hash = calculate_crc16(addr, 6);
+    *(uint16_t*)(cnx_id_returned->id + 1) = htons(lb_ctx->server_id ^ hash);
 }
 
 static uint64_t picoquic_lb_compat_cid_verify_clear(picoquic_quic_t* quic,
